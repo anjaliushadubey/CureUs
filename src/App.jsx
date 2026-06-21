@@ -3,7 +3,7 @@ import { medicalSources as seedSources } from "./data/medicalSources.js";
 import { mockDoctors } from "./data/mockDoctors.js";
 import { generateRagResponse } from "./utils/ragEngine.js";
 
-const DISCLAIMER =
+const SAFETY_NOTICE =
   "CureUs provides general health information only. It does not diagnose, prescribe, or replace emergency medical care.";
 
 const demoPrompts = [
@@ -12,16 +12,68 @@ const demoPrompts = [
   "I have acne and hair fall"
 ];
 
+const navItems = [
+  ["landing", "Landing", "H"],
+  ["chat", "Patient Chat", "C"],
+  ["report", "Report Upload", "R"],
+  ["doctor", "Doctor Dashboard", "D"],
+  ["admin", "Admin Dashboard", "A"],
+  ["login", "Login", "L"]
+];
+
+const roleTargets = {
+  Patient: "chat",
+  Doctor: "doctor",
+  Admin: "admin"
+};
+
+const previewRoleByView = {
+  chat: "Patient",
+  report: "Patient",
+  doctor: "Doctor",
+  admin: "Admin"
+};
+
 const initialAuditLogs = [
   { id: "audit-1", message: "Curated medical sources loaded", time: "Demo start" },
-  { id: "audit-2", message: "Safety rules enabled: no diagnosis, no prescription, emergency escalation", time: "Demo start" }
+  { id: "audit-2", message: "Emergency case escalated to doctor review", time: "Demo start" },
+  { id: "audit-3", message: "Safety rules enabled: no diagnosis, no prescription, emergency escalation", time: "Demo start" }
+];
+
+const initialFlaggedCases = [
+  {
+    id: "flagged-seed-1",
+    patient: "Patient-CU-1042",
+    query: "I have chest pain, sweating, and breathing difficulty.",
+    riskLevel: "Emergency",
+    reason: "Emergency red flags matched: chest pain, sweating, breathing difficulty.",
+    sources: ["Emergency Warning Signs Triage Sheet", "Hypertension Basics and When to Seek Care"],
+    trustScore: 65,
+    status: "Escalated"
+  }
+];
+
+const initialReviewQueue = [
+  {
+    id: "review-seed-1",
+    type: "Emergency conversation",
+    patient: "Patient-CU-1042",
+    summary:
+      "Emergency warning signs were detected. The user was advised to contact emergency services or visit the nearest hospital immediately.",
+    query: "I have chest pain, sweating, and breathing difficulty.",
+    riskLevel: "Emergency",
+    specialist: "Emergency care / Cardiologist",
+    sources: ["Emergency Warning Signs Triage Sheet", "Hypertension Basics and When to Seek Care"],
+    trustScore: 65,
+    status: "Needs doctor review"
+  }
 ];
 
 const demoUsers = [
   {
     id: "patient-demo",
     name: "Aarav Mehta",
-    email: "patient@cureus.demo",
+    email: "patient@cureus.local",
     password: "patient123",
     role: "Patient",
     access: ["landing", "chat", "report"]
@@ -29,7 +81,7 @@ const demoUsers = [
   {
     id: "doctor-demo",
     name: "Dr. Meera Iyer",
-    email: "doctor@cureus.demo",
+    email: "doctor@cureus.local",
     password: "doctor123",
     role: "Doctor",
     access: ["landing", "chat", "report", "doctor"]
@@ -37,7 +89,7 @@ const demoUsers = [
   {
     id: "admin-demo",
     name: "Admin Reviewer",
-    email: "admin@cureus.demo",
+    email: "admin@cureus.local",
     password: "admin123",
     role: "Admin",
     access: ["landing", "chat", "report", "doctor", "admin"]
@@ -61,8 +113,8 @@ function App() {
   const [sources, setSources] = useState(() => loadState("cureus.sources", seedSources));
   const [messages, setMessages] = useState(() => loadState("cureus.messages", []));
   const [appointments, setAppointments] = useState(() => loadState("cureus.appointments", []));
-  const [reviewQueue, setReviewQueue] = useState(() => loadState("cureus.reviewQueue", []));
-  const [flaggedCases, setFlaggedCases] = useState(() => loadState("cureus.flaggedCases", []));
+  const [reviewQueue, setReviewQueue] = useState(() => loadState("cureus.reviewQueue", initialReviewQueue));
+  const [flaggedCases, setFlaggedCases] = useState(() => loadState("cureus.flaggedCases", initialFlaggedCases));
   const [auditLogs, setAuditLogs] = useState(() => loadState("cureus.auditLogs", initialAuditLogs));
   const [doctorTab, setDoctorTab] = useState("appointments");
   const [chatInput, setChatInput] = useState("");
@@ -133,11 +185,76 @@ function App() {
 
   function navigate(nextView) {
     if (canAccess(nextView)) {
+      if (nextView === "doctor") setDoctorTab("reviews");
       setView(nextView);
       return;
     }
+
+    const previewRole = previewRoleByView[nextView];
+    if (previewRole) {
+      switchDemoRole(previewRole, nextView);
+      if (nextView === "doctor") setDoctorTab("reviews");
+      return;
+    }
+
     setLoginTarget(nextView);
     setView("login");
+  }
+
+  function switchDemoRole(role, targetView = roleTargets[role] || "landing") {
+    const user = demoUsers.find((item) => item.role === role);
+    if (!user) return;
+
+    setAuthToken("");
+    setCurrentUser(user);
+    setSuccessMessage(`Continuing as ${role}: ${user.name}`);
+    setAuditLogs((logs) => [
+      {
+        id: crypto.randomUUID(),
+        message: `Demo role switched (${role}: ${user.name})`,
+        time: new Date().toLocaleString()
+      },
+      ...logs
+    ]);
+    if (targetView === "doctor") setDoctorTab("reviews");
+    setView(targetView);
+  }
+
+  function runEmergencyDemo() {
+    switchDemoRole("Patient", "chat");
+    setTimeout(() => submitChat("I have chest pain, sweating, and breathing difficulty."), 0);
+  }
+
+  function openDoctorReviewQueue() {
+    switchDemoRole("Doctor", "doctor");
+    setDoctorTab("reviews");
+  }
+
+  function openAdminGovernance() {
+    switchDemoRole("Admin", "admin");
+  }
+
+  function openSampleReportDemo() {
+    switchDemoRole("Patient", "report");
+    const labSource = sources.find((source) => source.id === "lab-report-guide");
+    setReportConsent(true);
+    setSelectedFile("sample-blood-report.pdf");
+    setReportSummary({
+      blocked: false,
+      title: "Sample Blood Report",
+      values: [
+        { label: "Hemoglobin", value: "10.2 g/dL", status: "Low" },
+        { label: "Vitamin D", value: "14 ng/mL", status: "Low" },
+        { label: "HbA1c", value: "6.1%", status: "Slightly High" },
+        { label: "TSH", value: "2.3", status: "Normal" }
+      ],
+      meaning:
+        "Some values are outside the reference range shown in the sample report. This can guide a doctor discussion, but it is not a diagnosis.",
+      doctorDiscussion:
+        "Discuss low hemoglobin, low vitamin D, and slightly high HbA1c with a doctor, especially if symptoms, medications, diet, or medical history are relevant.",
+      source: labSource
+    });
+    addAudit("Sample report demo opened after consent");
   }
 
   async function handleLogin(credentials) {
@@ -289,7 +406,7 @@ function App() {
       setReportSummary({
         blocked: true,
         title: "Consent required",
-        text: "Please provide consent before CureUs processes a report for AI-assisted explanation."
+        text: "Please provide consent before CureUs processes a report for a plain-language explanation."
       });
       return;
     }
@@ -337,14 +454,14 @@ function App() {
 
   function updateReviewStatus(id, status) {
     setReviewQueue((items) => items.map((item) => (item.id === id ? { ...item, status } : item)));
-    addAudit(`Doctor reviewed AI summary: ${status}`);
+    addAudit(`Doctor reviewed care summary: ${status}`);
   }
 
   function toggleSource(id) {
     setSources((items) =>
       items.map((source) => (source.id === id ? { ...source, active: source.active === false } : source))
     );
-    addAudit("RAG source active status changed");
+    addAudit("Source active status changed");
   }
 
   function resetDemo() {
@@ -353,8 +470,8 @@ function App() {
     setSources(seedSources);
     setMessages([]);
     setAppointments([]);
-    setReviewQueue([]);
-    setFlaggedCases([]);
+    setReviewQueue(initialReviewQueue);
+    setFlaggedCases(initialFlaggedCases);
     setAuditLogs(initialAuditLogs);
     setReportSummary(null);
     setSuccessMessage("Demo state reset.");
@@ -368,38 +485,33 @@ function App() {
           <div className="brandMark">+</div>
           <div>
             <strong>CureUs</strong>
-            <span>Safe healthcare AI MVP</span>
+            <span>Healthcare expertise platform</span>
           </div>
         </div>
+        <RoleSwitcher currentRole={currentUser?.role || "Guest"} switchDemoRole={switchDemoRole} />
         <nav>
-          {[
-            ["landing", "Landing"],
-            ["chat", "Patient Chat"],
-            ["report", "Report Upload"],
-            ["doctor", "Doctor Dashboard"],
-            ["admin", "Admin Dashboard"],
-            ["login", currentUser ? "Switch User" : "Login"]
-          ].map(([key, label]) => (
+          {navItems.map(([key, label, icon]) => (
             <button key={key} className={view === key ? "active" : ""} onClick={() => navigate(key)} type="button">
-              {label}
+              <span className="navIcon">{icon}</span>
+              <span>{key === "login" && currentUser ? "Switch User" : label}</span>
             </button>
           ))}
         </nav>
+        <div className="mobileRoleStrip">
+          {["Patient", "Doctor", "Admin"].map((role) => (
+            <button key={role} className={currentUser?.role === role ? "active" : ""} onClick={() => switchDemoRole(role)} type="button">
+              {role}
+            </button>
+          ))}
+        </div>
         <div className="authPanel">
-          {currentUser ? (
-            <>
-              <span className="roleBadge">{currentUser.role}</span>
-              <strong>{currentUser.name}</strong>
-              <small>{currentUser.email}</small>
-              <button className="ghostButton compact" onClick={logout} type="button">Logout</button>
-            </>
-          ) : (
-            <>
-              <span className="roleBadge">Guest</span>
-              <strong>Not logged in</strong>
-              <small>Login to use patient, doctor, or admin workflows.</small>
-            </>
-          )}
+          <span className="roleBadge">Demo Mode Active</span>
+          <strong>{currentUser ? `Viewing as ${currentUser.role}` : "Choose a preview role"}</strong>
+          <small>{currentUser ? currentUser.name : "Patient, Doctor, and Admin modes are available above."}</small>
+          <div className="authActions">
+            <button className="ghostButton compact" onClick={() => navigate("login")} type="button">Switch role</button>
+            <button className="ghostButton compact" onClick={resetDemo} type="button">Reset</button>
+          </div>
         </div>
         <div className="safetyBox">
           <strong>Safety rules</strong>
@@ -414,14 +526,13 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">RAG + Agentic AI healthcare prototype</p>
             <h1>CureUs</h1>
           </div>
           <div className="topStats">
-            <Metric label="Active sources" value={stats.activeSources} />
-            <Metric label="Flagged" value={stats.flagged} />
-            <Metric label="Appointments" value={stats.appointments} />
-            <Metric label="Pending reviews" value={stats.pendingReviews} />
+            <Metric icon="S" label="Active Sources" value={stats.activeSources} detail="Curated and reviewed" />
+            <Metric icon="!" label="Emergency Flagged" value={stats.flagged} detail="Escalated cases" tone="danger" />
+            <Metric icon="B" label="Appointments" value={stats.appointments} detail="Requests created" />
+            <Metric icon="R" label="Pending Review" value={stats.pendingReviews} detail="Doctor queue" tone="warning" />
           </div>
         </header>
 
@@ -437,6 +548,11 @@ function App() {
             navigate={navigate}
             submitChat={submitChat}
             currentUser={currentUser}
+            switchDemoRole={switchDemoRole}
+            runEmergencyDemo={runEmergencyDemo}
+            openDoctorReviewQueue={openDoctorReviewQueue}
+            openAdminGovernance={openAdminGovernance}
+            openSampleReportDemo={openSampleReportDemo}
           />
         )}
 
@@ -495,7 +611,7 @@ function App() {
           /> : <AccessGate target="Admin Dashboard" onLogin={() => navigate("login")} />
         )}
 
-        <footer>{DISCLAIMER}</footer>
+        <footer>{SAFETY_NOTICE}</footer>
       </main>
 
       {appointmentDraft && (
@@ -510,58 +626,149 @@ function App() {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ icon, label, value, detail, tone = "default" }) {
   return (
-    <div className="metric">
+    <div className={`metric ${tone}`}>
+      <span className="metricIcon">{icon}</span>
       <strong>{value}</strong>
       <span>{label}</span>
+      {detail && <small>{detail}</small>}
     </div>
   );
 }
 
-function Landing({ navigate, submitChat, currentUser }) {
+function RoleSwitcher({ currentRole, switchDemoRole }) {
+  return (
+    <div className="roleSwitcher" aria-label="Demo role switcher">
+      <span>Preview as</span>
+      <div>
+        {["Patient", "Doctor", "Admin"].map((role) => (
+          <button key={role} className={currentRole === role ? "active" : ""} onClick={() => switchDemoRole(role)} type="button">
+            {role}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Landing({ navigate, submitChat, currentUser, switchDemoRole, runEmergencyDemo, openDoctorReviewQueue, openSampleReportDemo }) {
+  const featureCards = [
+    {
+      icon: "!",
+      title: "Emergency Triage",
+      text: "Blocks casual advice for red-flag symptoms and escalates urgent care.",
+      badge: "Safety-first"
+    },
+    {
+      icon: "C",
+      title: "Verified RAG Answers",
+      text: "Uses curated sources, citations, confidence, and trust score.",
+      badge: "Cited"
+    },
+    {
+      icon: "S",
+      title: "Specialist Routing",
+      text: "Maps symptoms to dermatology, gynecology, cardiology, therapy, and more.",
+      badge: "Agentic"
+    },
+    {
+      icon: "D",
+      title: "Doctor Review",
+      text: "Lets doctors approve, edit, reject, and mark care summaries as reviewed.",
+      badge: "Human review"
+    }
+  ];
+
   return (
     <section className="landing">
       <div className="hero">
-        <div>
-          <p className="eyebrow">AI-Powered Healthcare Expertise Platform</p>
-          <h2>Safe AI healthcare guidance with RAG, emergency triage, expert routing, and doctor-in-the-loop review.</h2>
+        <div className="heroCopy">
+          <p className="eyebrow">Healthcare AI Expertise Platform</p>
+          <h2>Safe AI healthcare guidance with verified sources, emergency triage, expert routing, and doctor review.</h2>
           <p>
-            CureUs demonstrates how a healthcare assistant can answer from curated sources, detect urgent cases before normal chat, route users to the right expert, and keep doctors in control.
+            CureUs demonstrates how RAG and agentic AI can answer from curated sources, detect urgent cases, route users to the right expert, and keep doctors in control.
           </p>
-          {!currentUser && (
-            <div className="loginNudge">
-              <strong>Demo login required for workflows</strong>
-              <span>Use seeded patient, doctor, or admin accounts backed by the local auth server.</span>
-            </div>
-          )}
-          <div className="buttonRow">
-            <button className="primaryButton" onClick={() => navigate("chat")} type="button">Try Patient Chat</button>
-            <button className="secondaryButton" onClick={() => navigate("doctor")} type="button">View Doctor Dashboard</button>
-            <button className="secondaryButton" onClick={() => navigate("admin")} type="button">View Admin Dashboard</button>
+
+          <div className="buttonRow heroActions">
+            <button className="primaryButton" onClick={() => switchDemoRole("Patient", "chat")} type="button">Try Patient Chat</button>
+            <button className="dangerButton" onClick={runEmergencyDemo} type="button">Run Emergency Demo</button>
+            <button className="secondaryButton" onClick={openSampleReportDemo} type="button">Upload Sample Report</button>
+            <button className="secondaryButton" onClick={openDoctorReviewQueue} type="button">View Doctor Queue</button>
           </div>
         </div>
-        <div className="storyCard">
-          <strong>Demo story</strong>
-          <span>User asks health query</span>
-          <span>AI detects risk</span>
-          <span>RAG gives cited answer</span>
-          <span>Specialist is routed</span>
-          <span>Doctor reviews</span>
-          <span>Admin monitors safety</span>
+
+        <div className="workflowCard">
+          <div className="workflowHeader">
+            <span className="roleBadge">Live safety workflow</span>
+            <strong>Agent flow</strong>
+          </div>
+          {[
+            ["User Query", "Intake"],
+            ["Triage Agent", "Risk Check"],
+            ["RAG Retrieval", "Sources Found"],
+            ["Safety Critic", "Guardrail"],
+            ["Specialist Routing", "Expert Routed"],
+            ["Doctor Review", "Needs Review"]
+          ].map(([step, badge], index) => (
+            <div className="workflowStep" key={step}>
+              <span>{index + 1}</span>
+              <strong>{step}</strong>
+              <small>{badge}</small>
+            </div>
+          ))}
         </div>
       </div>
 
+      <div className="safetyStrip">
+        {["No diagnosis", "No prescription", "Emergency escalation", "Clinician oversight", "Consent-based report explanation"].map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
+
+      <div className="previewGrid">
+        <article className="previewCard">
+          <div className="previewTop"><span className="previewLabel">Patient Chat Preview</span><strong>92%</strong></div>
+          <div className="miniChat">
+            <span>What is PCOS?</span>
+            <p>Cited answer from reviewed gynecology source with trust score.</p>
+          </div>
+          <div className="previewFooter">
+            <span className="badge lowBadge">Low Risk</span>
+            <strong>Cited answer</strong>
+          </div>
+        </article>
+        <article className="previewCard emergencyPreview">
+          <div className="previewTop"><span className="previewLabel">Emergency Triage Preview</span><strong>!</strong></div>
+          <div className="miniChat">
+            <span>Chest pain + sweating</span>
+            <p>Emergency flagged. Casual advice blocked and urgent care shown.</p>
+          </div>
+          <div className="previewFooter">
+            <span className="badge dangerBadge">Emergency</span>
+            <strong>Escalated</strong>
+          </div>
+        </article>
+        <article className="previewCard">
+          <div className="previewTop"><span className="previewLabel">Doctor Review Preview</span><strong>MD</strong></div>
+          <div className="miniReview">
+            <p>AI summary pending approval</p>
+            <div><span>Approve</span><span>Edit</span><span>Reject</span></div>
+          </div>
+          <div className="previewFooter">
+            <span className="badge warningBadge">Needs Review</span>
+            <strong>Human check</strong>
+          </div>
+        </article>
+      </div>
+
       <div className="featureGrid">
-        {[
-          ["Emergency Triage Agent", "Blocks casual advice for red-flag symptoms and escalates urgent care."],
-          ["Verified RAG Answers", "Retrieves mock curated sources, citations, confidence, and trust score."],
-          ["Specialist Routing", "Maps symptoms to dermatologist, gynecologist, cardiologist, therapist, and more."],
-          ["Doctor Review", "Lets doctors approve, edit, reject, and mark AI summaries as reviewed."]
-        ].map(([title, text]) => (
+        {featureCards.map(({ icon, title, text, badge }) => (
           <article className="featureCard" key={title}>
+            <span className="featureIcon">{icon}</span>
             <h3>{title}</h3>
             <p>{text}</p>
+            <span className="featureBadge">{badge}</span>
           </article>
         ))}
       </div>
@@ -574,7 +781,7 @@ function Landing({ navigate, submitChat, currentUser }) {
               key={prompt}
               className="chipButton"
               onClick={() => {
-                navigate("chat");
+                switchDemoRole("Patient", "chat");
                 setTimeout(() => submitChat(prompt), 0);
               }}
               type="button"
@@ -690,7 +897,7 @@ function ChatView({ messages, chatInput, setChatInput, submitChat, latestAnswer,
       <div className="panel chatPanel">
         <div className="panelHeader">
           <div>
-            <p className="eyebrow">Patient AI Chat</p>
+            <p className="eyebrow">Patient Health Chat</p>
             <h2>Ask a health question</h2>
           </div>
           <RiskBadge risk={latestAnswer?.triage.riskLevel || "Awaiting query"} />
@@ -712,7 +919,7 @@ function ChatView({ messages, chatInput, setChatInput, submitChat, latestAnswer,
           )}
           {messages.map((message) => (
             <div key={message.id} className={`message ${message.role}`}>
-              <span className="avatar">{message.role === "user" ? "You" : "AI"}</span>
+              <span className="avatar">{message.role === "user" ? "You" : "CU"}</span>
               <div className="bubble">
                 {message.role === "assistant" && message.payload ? (
                   <AnswerCard payload={message.payload} openAppointment={openAppointment} />
@@ -731,10 +938,10 @@ function ChatView({ messages, chatInput, setChatInput, submitChat, latestAnswer,
       </div>
 
       <aside className="panel">
-        <h3>RAG Reasoning</h3>
-        {latestAnswer ? <ReasoningPanel payload={latestAnswer} /> : <p className="muted">Submit a query to see retrieval reasoning.</p>}
-        <h3>Agent Flow</h3>
-        {latestAnswer ? <AgentTrace trace={latestAnswer.trace} /> : <p className="muted">Agent trace appears after an answer.</p>}
+        <h3>Source Reasoning</h3>
+        {latestAnswer ? <ReasoningPanel payload={latestAnswer} /> : <p className="muted">Submit a query to see source reasoning.</p>}
+        <h3>Review Path</h3>
+        {latestAnswer ? <AgentTrace trace={latestAnswer.trace} /> : <p className="muted">Review path appears after an answer.</p>}
       </aside>
     </section>
   );
@@ -750,7 +957,7 @@ function AnswerCard({ payload, openAppointment }) {
         <InfoTile label="Specialist" value={payload.route.specialist} />
       </div>
       <p className={payload.triage.riskLevel === "Emergency" ? "emergencyText" : ""}>{payload.answer}</p>
-      {payload.triage.riskLevel === "Emergency" && <p className="blockedText">Normal casual medical advice blocked by Safety Critic Agent.</p>}
+      {payload.triage.riskLevel === "Emergency" && <p className="blockedText">Casual medical advice is blocked for this emergency-risk case.</p>}
       <div className="sourceList">
         <h4>Sources used</h4>
         {payload.sources.map((source) => (
@@ -813,7 +1020,7 @@ function ReportView({ reportConsent, setReportConsent, selectedFile, setSelected
         </label>
         <label className="checkRow">
           <input type="checkbox" checked={reportConsent} onChange={(event) => setReportConsent(event.target.checked)} />
-          <span>I consent to CureUs processing this report for AI-assisted explanation.</span>
+          <span>I consent to CureUs processing this report for a plain-language explanation.</span>
         </label>
         <div className="buttonRow">
           <button className="primaryButton" onClick={() => generateReportSummary(false)} type="button">Explain Uploaded Report</button>
@@ -823,7 +1030,7 @@ function ReportView({ reportConsent, setReportConsent, selectedFile, setSelected
 
       <div className="panel">
         <h3>Report explanation</h3>
-        {!reportSummary && <p className="muted">Consent is required before any AI-assisted explanation appears.</p>}
+        {!reportSummary && <p className="muted">Consent is required before any report explanation appears.</p>}
         {reportSummary?.blocked && (
           <div>
             <h3>{reportSummary.title}</h3>
@@ -857,7 +1064,7 @@ function DoctorDashboard({ tab, setTab, appointments, reviewQueue, flaggedCases,
   const reportItems = reviewQueue.filter((item) => item.type === "Report summary");
   const tabs = [
     ["appointments", `Today's appointment requests (${appointments.length})`],
-    ["reviews", `AI review queue (${reviewQueue.length})`],
+    ["reviews", `Review queue (${reviewQueue.length})`],
     ["flagged", `Flagged emergency cases (${flaggedCases.length})`],
     ["reports", `Report summaries (${reportItems.length})`]
   ];
@@ -865,7 +1072,13 @@ function DoctorDashboard({ tab, setTab, appointments, reviewQueue, flaggedCases,
   return (
     <section className="panel">
       <p className="eyebrow">Doctor Dashboard</p>
-      <h2>Doctor-in-the-loop review</h2>
+      <h2>Clinical review workspace</h2>
+      <div className="dashboardStats">
+        <InfoTile label="Review queue" value={reviewQueue.length} />
+        <InfoTile label="Emergency cases" value={flaggedCases.length} />
+        <InfoTile label="Appointments" value={appointments.length} />
+        <InfoTile label="Report summaries" value={reportItems.length} />
+      </div>
       <div className="tabs">
         {tabs.map(([key, label]) => (
           <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} type="button">{label}</button>
@@ -887,7 +1100,7 @@ function DoctorDashboard({ tab, setTab, appointments, reviewQueue, flaggedCases,
       )}
 
       {tab === "reviews" && (
-        <CardGrid empty="No AI review queue items yet.">
+        <CardGrid empty="No review queue items yet.">
           {reviewQueue.map((item) => (
             <ReviewCard key={item.id} item={item} updateReviewStatus={updateReviewStatus} />
           ))}
@@ -925,7 +1138,7 @@ function ReviewCard({ item, updateReviewStatus }) {
       <h3>{item.type}</h3>
       <p><strong>Patient:</strong> {item.patient}</p>
       <p><strong>Query/report:</strong> {item.query}</p>
-      <p><strong>AI summary:</strong> {item.summary}</p>
+      <p><strong>Care summary:</strong> {item.summary}</p>
       <div className="miniGrid">
         <RiskBadge risk={item.riskLevel} />
         <InfoTile label="Specialist" value={item.specialist} />
@@ -949,7 +1162,13 @@ function AdminDashboard({ sources, toggleSource, flaggedCases, reviewQueue, audi
     <section className="adminGrid">
       <div className="panel">
         <p className="eyebrow">Admin Dashboard</p>
-        <h2>RAG source governance</h2>
+        <h2>Source governance</h2>
+        <div className="dashboardStats">
+          <InfoTile label="Verified sources" value={sources.length} />
+          <InfoTile label="Active sources" value={sources.filter((source) => source.active !== false).length} />
+          <InfoTile label="Flagged conversations" value={flaggedCases.length} />
+          <InfoTile label="Audit logs" value={auditLogs.length} />
+        </div>
         <div className="sourceTable">
           {sources.map((source) => (
             <article className="sourceRow" key={source.id}>

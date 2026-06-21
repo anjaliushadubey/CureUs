@@ -44,7 +44,7 @@ export function retrieveSources(query, sources) {
       ...source,
       matchedKeywords: [],
       score: 0,
-      selectionReason: "Added as a high-quality supporting source so the simulated RAG panel shows broader evidence context."
+      selectionReason: "Added as a high-quality supporting source for broader evidence context."
     }));
 
   return [...ranked, ...fallback];
@@ -62,17 +62,17 @@ export function calculateTrustScore({ sources, triage }) {
 
 export function buildAgentTrace({ triage, sources, route }) {
   return [
-    { name: "User Query", status: "completed", detail: "Query received from patient." },
-    { name: "Triage Agent", status: triage.riskLevel === "Emergency" ? "escalated" : "completed", detail: triage.reason },
+    { name: "User question", status: "completed", detail: "Query received from patient." },
+    { name: "Safety check", status: triage.riskLevel === "Emergency" ? "escalated" : "completed", detail: triage.reason },
     {
-      name: "RAG Retrieval Agent",
+      name: "Source review",
       status: triage.riskLevel === "Emergency" ? "skipped" : "completed",
-      detail: triage.riskLevel === "Emergency" ? "Normal RAG answer skipped for safety." : `${sources.length} curated source(s) retrieved.`
+      detail: triage.riskLevel === "Emergency" ? "Normal answer skipped for safety." : `${sources.length} curated source(s) reviewed.`
     },
-    { name: "Safety Critic Agent", status: "completed", detail: "Checked no diagnosis, no prescription, citations, and emergency handling." },
-    { name: "Specialist Routing Agent", status: "completed", detail: `Suggested: ${route.specialist}.` },
+    { name: "Response review", status: "completed", detail: "Checked no diagnosis, no prescription, citations, and emergency handling." },
+    { name: "Expert routing", status: "completed", detail: `Suggested: ${route.specialist}.` },
     {
-      name: "Doctor Review Queue",
+      name: "Doctor review",
       status: triage.riskLevel === "Emergency" || triage.riskLevel === "Medium" ? "escalated" : "skipped",
       detail: triage.riskLevel === "Low" ? "Doctor review optional for educational query." : "Case added or eligible for doctor review."
     }
@@ -106,7 +106,7 @@ export function generateRagResponse(query, sources) {
       trustScore,
       trace,
       answer:
-        "This may require urgent medical attention. Please contact emergency services or visit the nearest hospital immediately. CureUs will not provide casual advice for this case because the triage agent detected emergency warning signs.",
+        "This may require urgent medical attention. Please contact emergency services or visit the nearest hospital immediately. CureUs will not provide casual advice for this case because emergency warning signs were detected.",
       disclaimer: "CureUs provides general health information only. It does not diagnose, prescribe, or replace emergency medical care."
     };
   }

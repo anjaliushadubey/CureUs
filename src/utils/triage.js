@@ -37,7 +37,7 @@ export function classifyTriage(query) {
       severity: "emergency",
       matchedEmergency,
       personalSymptoms,
-      reason: `Triage Agent matched emergency red flags: ${matchedEmergency.join(", ")}.`
+      reason: `Emergency red flags matched: ${matchedEmergency.join(", ")}.`
     };
   }
 
@@ -56,6 +56,6 @@ export function classifyTriage(query) {
     severity: "low",
     matchedEmergency: [],
     personalSymptoms,
-    reason: "No emergency warning signs detected. Safe for educational RAG response."
+    reason: "No emergency warning signs detected. Suitable for general health education."
   };
 }
