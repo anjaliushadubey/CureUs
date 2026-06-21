@@ -1,0 +1,38 @@
+[
+  {
+    "id": "3f4548eb-616c-4a95-84d3-6c4d8162b325",
+    "name": "Aarav Mehta",
+    "email": "patient@cureus.local",
+    "role": "Patient",
+    "salt": "3ef1796c1880d3ae5ece7cc76c302538",
+    "passwordHash": "9756e38b3af38251cc12ac72482f3aa8667cb4a96bf8e7ddfd3af2c1eff3d1fb",
+    "createdAt": "2026-06-21T07:00:35.677Z"
+  },
+  {
+    "id": "3ca1309f-7868-404a-9f0b-b31ffeacadc8",
+    "name": "Dr. Meera Iyer",
+    "email": "doctor@cureus.local",
+    "role": "Doctor",
+    "salt": "ffffad66e5e5f7e10e3f70867904f53a",
+    "passwordHash": "2c30d3480f0ecdf6b5cd37dcd2012bfba74de93ab0cd40d980bfea4ce154ceab",
+    "createdAt": "2026-06-21T07:00:35.697Z"
+  },
+  {
+    "id": "d26f7ee8-4584-4e4d-ad56-0a6e146580b6",
+    "name": "Admin Reviewer",
+    "email": "admin@cureus.local",
+    "role": "Admin",
+    "salt": "58ac390976a2c26d7b103eed0138a15b",
+    "passwordHash": "40e7ef4141a2b47cd0f929a6d1462aec1c4a7739651af4b772421383284f26ef",
+    "createdAt": "2026-06-21T07:00:35.718Z"
+  },
+  {
+    "id": "2a2e91a2-2f33-4350-8b33-e9c01bd812d8",
+    "name": "Anjali Dubey",
+    "email": "patient@cureus.demo",
+    "role": "Patient",
+    "salt": "2cfa6f4ed87258b5e2b21bfbfda35a10",
+    "passwordHash": "2aa8613f77154da5d8d999de9c97a21ab3f6eb53f2c2cce1e4f83d4736999174",
+    "createdAt": "2026-06-21T07:01:29.216Z"
+  }
+]

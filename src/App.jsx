@@ -17,6 +17,33 @@ const initialAuditLogs = [
   { id: "audit-2", message: "Safety rules enabled: no diagnosis, no prescription, emergency escalation", time: "Demo start" }
 ];
 
+const demoUsers = [
+  {
+    id: "patient-demo",
+    name: "Aarav Mehta",
+    email: "patient@cureus.demo",
+    password: "patient123",
+    role: "Patient",
+    access: ["landing", "chat", "report"]
+  },
+  {
+    id: "doctor-demo",
+    name: "Dr. Meera Iyer",
+    email: "doctor@cureus.demo",
+    password: "doctor123",
+    role: "Doctor",
+    access: ["landing", "chat", "report", "doctor"]
+  },
+  {
+    id: "admin-demo",
+    name: "Admin Reviewer",
+    email: "admin@cureus.demo",
+    password: "admin123",
+    role: "Admin",
+    access: ["landing", "chat", "report", "doctor", "admin"]
+  }
+];
+
 function loadState(key, fallback) {
   try {
     const saved = localStorage.getItem(key);
@@ -28,6 +55,9 @@ function loadState(key, fallback) {
 
 function App() {
   const [view, setView] = useState("landing");
+  const [currentUser, setCurrentUser] = useState(() => loadState("cureus.currentUser", null));
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem("cureus.authToken") || "");
+  const [loginTarget, setLoginTarget] = useState("chat");
   const [sources, setSources] = useState(() => loadState("cureus.sources", seedSources));
   const [messages, setMessages] = useState(() => loadState("cureus.messages", []));
   const [appointments, setAppointments] = useState(() => loadState("cureus.appointments", []));
@@ -42,6 +72,11 @@ function App() {
   const [reportSummary, setReportSummary] = useState(null);
   const [selectedFile, setSelectedFile] = useState("");
 
+  useEffect(() => localStorage.setItem("cureus.currentUser", JSON.stringify(currentUser)), [currentUser]);
+  useEffect(() => {
+    if (authToken) localStorage.setItem("cureus.authToken", authToken);
+    else localStorage.removeItem("cureus.authToken");
+  }, [authToken]);
   useEffect(() => localStorage.setItem("cureus.sources", JSON.stringify(sources)), [sources]);
   useEffect(() => localStorage.setItem("cureus.messages", JSON.stringify(messages)), [messages]);
   useEffect(() => localStorage.setItem("cureus.appointments", JSON.stringify(appointments)), [appointments]);
@@ -50,6 +85,25 @@ function App() {
   useEffect(() => localStorage.setItem("cureus.auditLogs", JSON.stringify(auditLogs)), [auditLogs]);
 
   const latestAnswer = [...messages].reverse().find((message) => message.role === "assistant")?.payload;
+
+  useEffect(() => {
+    if (!authToken) return;
+    let cancelled = false;
+    fetch("/api/auth/me", { headers: { authorization: `Bearer ${authToken}` } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Session expired")))
+      .then((data) => {
+        if (!cancelled) setCurrentUser(data.user);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAuthToken("");
+          setCurrentUser(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken]);
 
   const stats = useMemo(
     () => ({
@@ -63,9 +117,90 @@ function App() {
 
   function addAudit(message) {
     setAuditLogs((logs) => [
-      { id: crypto.randomUUID(), message, time: new Date().toLocaleString() },
+      {
+        id: crypto.randomUUID(),
+        message: currentUser ? `${message} (${currentUser.role}: ${currentUser.name})` : message,
+        time: new Date().toLocaleString()
+      },
       ...logs
     ]);
+  }
+
+  function canAccess(viewName, user = currentUser) {
+    if (viewName === "landing" || viewName === "login") return true;
+    return Boolean(user?.access?.includes(viewName));
+  }
+
+  function navigate(nextView) {
+    if (canAccess(nextView)) {
+      setView(nextView);
+      return;
+    }
+    setLoginTarget(nextView);
+    setView("login");
+  }
+
+  async function handleLogin(credentials) {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(credentials)
+    });
+    const data = await response.json();
+    if (!response.ok) return { ok: false, message: data.message || "Login failed." };
+
+    setAuthToken(data.token);
+    setCurrentUser(data.user);
+    setSuccessMessage(`Logged in as ${data.user.role}: ${data.user.name}`);
+    setAuditLogs((logs) => [
+      {
+        id: crypto.randomUUID(),
+        message: `User logged in (${data.user.role}: ${data.user.name})`,
+        time: new Date().toLocaleString()
+      },
+      ...logs
+    ]);
+    setView(canAccess(loginTarget, data.user) ? loginTarget : "landing");
+    return { ok: true };
+  }
+
+  async function handleRegister(payload) {
+    const response = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) return { ok: false, message: data.message || "Registration failed." };
+
+    setAuthToken(data.token);
+    setCurrentUser(data.user);
+    setSuccessMessage(`Account created for ${data.user.name}`);
+    setAuditLogs((logs) => [
+      {
+        id: crypto.randomUUID(),
+        message: `User registered (${data.user.role}: ${data.user.name})`,
+        time: new Date().toLocaleString()
+      },
+      ...logs
+    ]);
+    setView(canAccess(loginTarget, data.user) ? loginTarget : "landing");
+    return { ok: true };
+  }
+
+  function logout() {
+    if (authToken) {
+      fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { authorization: `Bearer ${authToken}` }
+      }).catch(() => {});
+    }
+    setAuthToken("");
+    setCurrentUser(null);
+    localStorage.removeItem("cureus.currentUser");
+    localStorage.removeItem("cureus.authToken");
+    setSuccessMessage("Logged out.");
+    setView("landing");
   }
 
   function submitChat(queryText = chatInput) {
@@ -117,8 +252,14 @@ function App() {
   }
 
   function openAppointment(payload) {
+    if (!currentUser) {
+      setLoginTarget("chat");
+      setView("login");
+      return;
+    }
+
     setAppointmentDraft({
-      name: "",
+      name: currentUser.role === "Patient" ? currentUser.name : "",
       age: "",
       specialist: payload?.route?.specialist || "General Physician",
       concern: payload?.query || ""
@@ -178,7 +319,7 @@ function App() {
       {
         id: crypto.randomUUID(),
         type: "Report summary",
-        patient: "Patient-CU-2048",
+        patient: currentUser?.role === "Patient" ? currentUser.name : "Patient-CU-2048",
         summary: `${reportSummary.title}: ${reportSummary.meaning}`,
         query: "Blood report explanation",
         riskLevel: "Medium",
@@ -208,6 +349,7 @@ function App() {
 
   function resetDemo() {
     localStorage.clear();
+    setCurrentUser(null);
     setSources(seedSources);
     setMessages([]);
     setAppointments([]);
@@ -216,6 +358,7 @@ function App() {
     setAuditLogs(initialAuditLogs);
     setReportSummary(null);
     setSuccessMessage("Demo state reset.");
+    setView("landing");
   }
 
   return (
@@ -234,13 +377,30 @@ function App() {
             ["chat", "Patient Chat"],
             ["report", "Report Upload"],
             ["doctor", "Doctor Dashboard"],
-            ["admin", "Admin Dashboard"]
+            ["admin", "Admin Dashboard"],
+            ["login", currentUser ? "Switch User" : "Login"]
           ].map(([key, label]) => (
-            <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)} type="button">
+            <button key={key} className={view === key ? "active" : ""} onClick={() => navigate(key)} type="button">
               {label}
             </button>
           ))}
         </nav>
+        <div className="authPanel">
+          {currentUser ? (
+            <>
+              <span className="roleBadge">{currentUser.role}</span>
+              <strong>{currentUser.name}</strong>
+              <small>{currentUser.email}</small>
+              <button className="ghostButton compact" onClick={logout} type="button">Logout</button>
+            </>
+          ) : (
+            <>
+              <span className="roleBadge">Guest</span>
+              <strong>Not logged in</strong>
+              <small>Login to use patient, doctor, or admin workflows.</small>
+            </>
+          )}
+        </div>
         <div className="safetyBox">
           <strong>Safety rules</strong>
           <span>No diagnosis</span>
@@ -274,24 +434,36 @@ function App() {
 
         {view === "landing" && (
           <Landing
-            setView={setView}
+            navigate={navigate}
             submitChat={submitChat}
+            currentUser={currentUser}
+          />
+        )}
+
+        {view === "login" && (
+          <LoginView
+            users={demoUsers}
+            loginTarget={loginTarget}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            currentUser={currentUser}
+            logout={logout}
           />
         )}
 
         {view === "chat" && (
-          <ChatView
+          canAccess("chat") ? <ChatView
             messages={messages}
             chatInput={chatInput}
             setChatInput={setChatInput}
             submitChat={submitChat}
             latestAnswer={latestAnswer}
             openAppointment={openAppointment}
-          />
+          /> : <AccessGate target="Patient Chat" onLogin={() => navigate("login")} />
         )}
 
         {view === "report" && (
-          <ReportView
+          canAccess("report") ? <ReportView
             reportConsent={reportConsent}
             setReportConsent={setReportConsent}
             selectedFile={selectedFile}
@@ -299,28 +471,28 @@ function App() {
             reportSummary={reportSummary}
             generateReportSummary={generateReportSummary}
             sendReportToDoctor={sendReportToDoctor}
-          />
+          /> : <AccessGate target="Report Upload" onLogin={() => navigate("login")} />
         )}
 
         {view === "doctor" && (
-          <DoctorDashboard
+          canAccess("doctor") ? <DoctorDashboard
             tab={doctorTab}
             setTab={setDoctorTab}
             appointments={appointments}
             reviewQueue={reviewQueue}
             flaggedCases={flaggedCases}
             updateReviewStatus={updateReviewStatus}
-          />
+          /> : <AccessGate target="Doctor Dashboard" onLogin={() => navigate("login")} />
         )}
 
         {view === "admin" && (
-          <AdminDashboard
+          canAccess("admin") ? <AdminDashboard
             sources={sources}
             toggleSource={toggleSource}
             flaggedCases={flaggedCases}
             reviewQueue={reviewQueue}
             auditLogs={auditLogs}
-          />
+          /> : <AccessGate target="Admin Dashboard" onLogin={() => navigate("login")} />
         )}
 
         <footer>{DISCLAIMER}</footer>
@@ -347,7 +519,7 @@ function Metric({ label, value }) {
   );
 }
 
-function Landing({ setView, submitChat }) {
+function Landing({ navigate, submitChat, currentUser }) {
   return (
     <section className="landing">
       <div className="hero">
@@ -357,10 +529,16 @@ function Landing({ setView, submitChat }) {
           <p>
             CureUs demonstrates how a healthcare assistant can answer from curated sources, detect urgent cases before normal chat, route users to the right expert, and keep doctors in control.
           </p>
+          {!currentUser && (
+            <div className="loginNudge">
+              <strong>Demo login required for workflows</strong>
+              <span>Use seeded patient, doctor, or admin accounts backed by the local auth server.</span>
+            </div>
+          )}
           <div className="buttonRow">
-            <button className="primaryButton" onClick={() => setView("chat")} type="button">Try Patient Chat</button>
-            <button className="secondaryButton" onClick={() => setView("doctor")} type="button">View Doctor Dashboard</button>
-            <button className="secondaryButton" onClick={() => setView("admin")} type="button">View Admin Dashboard</button>
+            <button className="primaryButton" onClick={() => navigate("chat")} type="button">Try Patient Chat</button>
+            <button className="secondaryButton" onClick={() => navigate("doctor")} type="button">View Doctor Dashboard</button>
+            <button className="secondaryButton" onClick={() => navigate("admin")} type="button">View Admin Dashboard</button>
           </div>
         </div>
         <div className="storyCard">
@@ -396,7 +574,7 @@ function Landing({ setView, submitChat }) {
               key={prompt}
               className="chipButton"
               onClick={() => {
-                setView("chat");
+                navigate("chat");
                 setTimeout(() => submitChat(prompt), 0);
               }}
               type="button"
@@ -406,6 +584,102 @@ function Landing({ setView, submitChat }) {
           ))}
         </div>
       </div>
+    </section>
+  );
+}
+
+function LoginView({ users, loginTarget, onLogin, onRegister, currentUser, logout }) {
+  const [mode, setMode] = useState("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState(users[0].email);
+  const [password, setPassword] = useState(users[0].password);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    const result = mode === "login"
+      ? await onLogin({ email, password })
+      : await onRegister({ name, email, password });
+    setLoading(false);
+    if (!result.ok) setError(result.message);
+  }
+
+  function fillUser(user) {
+    setMode("login");
+    setName(user.name);
+    setEmail(user.email);
+    setPassword(user.password);
+    setError("");
+  }
+
+  return (
+    <section className="gridTwo">
+      <div className="panel">
+        <p className="eyebrow">Real Local Authentication</p>
+        <h2>{mode === "login" ? "Login to CureUs" : "Create patient account"}</h2>
+        <p className="muted">
+          Login is handled by the local Node auth server with hashed passwords and signed bearer tokens. New signups are stored as Patient accounts.
+        </p>
+        {currentUser && (
+          <div className="loginNudge">
+            <strong>Currently logged in as {currentUser.name}</strong>
+            <span>{currentUser.role} account active. You can switch users below.</span>
+            <button className="secondaryButton" onClick={logout} type="button">Logout current user</button>
+          </div>
+        )}
+        <div className="tabs compactTabs">
+          <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")} type="button">Login</button>
+          <button className={mode === "register" ? "active" : ""} onClick={() => setMode("register")} type="button">Register</button>
+        </div>
+        <form className="loginForm" onSubmit={submit}>
+          {mode === "register" && (
+            <label>Name
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Patient name" />
+            </label>
+          )}
+          <label>Email
+            <input value={email} onChange={(event) => setEmail(event.target.value)} />
+          </label>
+          <label>Password
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          </label>
+          {error && <p className="emergencyText">{error}</p>}
+          <button className="primaryButton" type="submit" disabled={loading}>
+            {loading ? "Please wait..." : mode === "login" ? "Login" : "Create account"}
+          </button>
+        </form>
+      </div>
+
+      <aside className="panel">
+        <h3>Seeded local accounts</h3>
+        <p className="muted">Target after login: {loginTarget}</p>
+        <div className="accountList">
+          {users.map((user) => (
+            <button key={user.id} className="accountCard" onClick={() => fillUser(user)} type="button">
+              <span className="roleBadge">{user.role}</span>
+              <strong>{user.name}</strong>
+              <small>{user.email}</small>
+              <small>Password: {user.password}</small>
+            </button>
+          ))}
+        </div>
+      </aside>
+    </section>
+  );
+}
+
+function AccessGate({ target, onLogin }) {
+  return (
+    <section className="panel accessGate">
+      <p className="eyebrow">Login required</p>
+      <h2>{target}</h2>
+      <p>
+        Please login with an account that has access to this workspace. Patient accounts can use chat and reports, doctors can review clinical queues, and admins can manage governance.
+      </p>
+      <button className="primaryButton" onClick={onLogin} type="button">Go to Login</button>
     </section>
   );
 }
@@ -433,7 +707,7 @@ function ChatView({ messages, chatInput, setChatInput, submitChat, latestAnswer,
         <div className="chatWindow">
           {!messages.length && (
             <div className="emptyState">
-              Try “What is PCOS?”, “I have chest pain and sweating”, or “I have acne and hair fall”.
+              Try "What is PCOS?", "I have chest pain and sweating", or "I have acne and hair fall".
             </div>
           )}
           {messages.map((message) => (
@@ -550,7 +824,12 @@ function ReportView({ reportConsent, setReportConsent, selectedFile, setSelected
       <div className="panel">
         <h3>Report explanation</h3>
         {!reportSummary && <p className="muted">Consent is required before any AI-assisted explanation appears.</p>}
-        {reportSummary?.blocked && <p className="emergencyText">{reportSummary.text}</p>}
+        {reportSummary?.blocked && (
+          <div>
+            <h3>{reportSummary.title}</h3>
+            <p className="emergencyText">{reportSummary.text}</p>
+          </div>
+        )}
         {reportSummary && !reportSummary.blocked && (
           <div className="reportResult">
             <h3>{reportSummary.title}</h3>

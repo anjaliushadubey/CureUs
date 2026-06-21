@@ -1,5 +1,18 @@
 # CureUs 5-Minute Demo Script
 
+## 0. Login
+
+- Open CureUs.
+- Click Login.
+- Select the Patient account:
+  - `patient@cureus.local`
+  - `patient123`
+- Login.
+
+Talk track:
+
+> CureUs now uses a real local Node auth server. Passwords are hashed, sessions use signed bearer tokens, and views are role-aware.
+
 ## 1. Ask "What is PCOS?"
 
 - Open Patient Chat.
@@ -76,6 +89,9 @@ Talk track:
 
 ## 5. Open doctor dashboard
 
+- Switch User / Login as Doctor:
+  - `doctor@cureus.local`
+  - `doctor123`
 - Open Doctor Dashboard.
 - Show:
   - Today's appointment requests
@@ -91,6 +107,9 @@ Talk track:
 
 ## 6. Open admin dashboard
 
+- Switch User / Login as Admin:
+  - `admin@cureus.local`
+  - `admin123`
 - Open Admin Dashboard.
 - Show:
   - verified sources

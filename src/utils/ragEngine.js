@@ -14,7 +14,7 @@ export function retrieveSources(query, sources) {
   const queryTokens = unique(tokenize(query));
   const activeSources = sources.filter((source) => source.active !== false);
 
-  return activeSources
+  const ranked = activeSources
     .map((source) => {
       const haystack = `${source.title} ${source.sourceName} ${source.specialty} ${source.condition} ${source.content}`;
       const sourceTokens = tokenize(haystack);
@@ -33,6 +33,21 @@ export function retrieveSources(query, sources) {
     .filter((source) => source.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
+
+  if (ranked.length >= 3) return ranked;
+
+  const fallback = activeSources
+    .filter((source) => !ranked.some((item) => item.id === source.id))
+    .filter((source) => source.evidenceLevel === "High" || source.reviewedBy)
+    .slice(0, 3 - ranked.length)
+    .map((source) => ({
+      ...source,
+      matchedKeywords: [],
+      score: 0,
+      selectionReason: "Added as a high-quality supporting source so the simulated RAG panel shows broader evidence context."
+    }));
+
+  return [...ranked, ...fallback];
 }
 
 export function calculateTrustScore({ sources, triage }) {

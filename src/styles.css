@@ -113,8 +113,43 @@ nav button.active,
   background: rgba(255, 255, 255, 0.08);
 }
 
+.authPanel {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.authPanel small,
+.accountCard small {
+  color: var(--muted);
+}
+
+.authPanel small {
+  color: #c5d8d1;
+}
+
+.roleBadge {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #e7f6eb;
+  color: #126b31;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .ghostButton {
   margin-top: auto;
+}
+
+.ghostButton.compact {
+  min-height: 34px;
+  margin-top: 6px;
+  padding: 8px 10px;
 }
 
 .main {
@@ -240,6 +275,21 @@ h3 {
   font-weight: 800;
 }
 
+.loginNudge {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfb;
+  color: var(--primary-dark);
+}
+
+.loginNudge span {
+  color: var(--muted);
+}
+
 .buttonRow,
 .demoPrompts,
 .tabs {
@@ -247,6 +297,44 @@ h3 {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.compactTabs {
+  margin-bottom: 14px;
+}
+
+.loginForm,
+.accountList {
+  display: grid;
+  gap: 12px;
+}
+
+.loginForm label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.accountCard {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfb;
+  color: var(--ink);
+  text-align: left;
+}
+
+.accountCard:hover {
+  border-color: var(--primary);
+  background: var(--soft);
+}
+
+.accessGate {
+  max-width: 760px;
 }
 
 .primaryButton,

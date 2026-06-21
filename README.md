@@ -21,6 +21,9 @@ CureUs is a working hackathon MVP that demonstrates a safer healthcare AI produc
 ## Features
 
 - Landing page with demo story and CTAs
+- Real local login/signup with a Node auth API
+- PBKDF2 password hashing and signed bearer tokens
+- Role-aware access for Patient, Doctor, and Admin views
 - Working patient AI chat
 - Emergency red-flag triage
 - Simulated RAG with citations, matched keywords, reasoning, and trust score
@@ -37,6 +40,8 @@ CureUs is a working hackathon MVP that demonstrates a safer healthcare AI produc
 
 ```text
 React + Vite frontend
+  -> Local Node auth server
+  -> Password hashing + signed token session
   -> Local mock medical source data
   -> Triage utility
   -> Simulated RAG retrieval utility
@@ -103,10 +108,13 @@ Disclaimer shown in the app:
 
 - React
 - Vite
+- Node.js local auth API
+- PBKDF2 password hashing
+- Signed bearer tokens
 - Plain CSS
 - Local mock data
 - Browser `localStorage`
-- No backend
+- Local JSON auth store
 - No real API keys
 
 ## How To Run
@@ -116,31 +124,46 @@ npm install
 npm run dev
 ```
 
-Then open the local Vite URL shown in the terminal, usually:
+`npm run dev` starts both:
+
+- Auth API: `http://127.0.0.1:4000`
+- Frontend: `http://127.0.0.1:5173`
+
+Then open:
 
 ```text
-http://localhost:5173/
+http://127.0.0.1:5173/
 ```
+
+Seeded accounts:
+
+```text
+Patient: patient@cureus.local / patient123
+Doctor:  doctor@cureus.local / doctor123
+Admin:   admin@cureus.local / admin123
+```
+
+New signups create Patient accounts.
 
 ## Demo Flow
 
 1. Open Landing and show the CureUs positioning.
-2. Click Try Patient Chat.
-3. Ask `What is PCOS?` and show RAG answer, citations, trust score, and agent trace.
-4. Ask `I have chest pain and sweating` and show emergency triage with normal answer blocked.
-5. Ask `I have acne and hair fall` and request an appointment.
-6. Open Report Upload, consent, and use the sample blood report.
-7. Send report summary to doctor review.
-8. Open Doctor Dashboard and update a case status.
-9. Open Admin Dashboard and toggle a source active/inactive.
-10. Show audit logs.
+2. Login as Patient.
+3. Click Try Patient Chat.
+4. Ask `What is PCOS?` and show RAG answer, citations, trust score, and agent trace.
+5. Ask `I have chest pain and sweating` and show emergency triage with normal answer blocked.
+6. Ask `I have acne and hair fall` and request an appointment.
+7. Open Report Upload, consent, and use the sample blood report.
+8. Send report summary to doctor review.
+9. Switch/login as Doctor and update a case status.
+10. Switch/login as Admin, toggle a source active/inactive, and show audit logs.
 
 ## Limitations
 
 - RAG is simulated with local keyword matching.
 - Sources are curated mock documents, not live medical guidelines.
-- No authentication or RBAC yet.
-- No backend API yet.
+- Authentication is local development auth, not production identity management.
+- RBAC is enforced in the frontend for demo routing; production must enforce authorization on the backend too.
 - No real file OCR.
 - No real appointment booking.
 - No production compliance layer.
